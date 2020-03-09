@@ -8,7 +8,7 @@ module Utc exposing (fromTime, toTime, decoder, encode)
 
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
-import Parser exposing ((|.), (|=), Parser, andThen, end, oneOf, succeed, symbol)
+import Parser exposing ((|.), (|=), Parser, andThen, end, oneOf, spaces, succeed, symbol)
 import Time exposing (Month(..), Weekday(..), utc)
 
 
@@ -95,7 +95,7 @@ epochYear =
     1970
 
 
-yearMonthDay : ( Int, Int, Int ) -> Parser Int
+yearMonthDay : ( Int, Month, Int ) -> Parser Int
 yearMonthDay ( year, month, dayInMonth ) =
     if dayInMonth < 0 then
         invalidDay dayInMonth
@@ -105,10 +105,10 @@ yearMonthDay ( year, month, dayInMonth ) =
             succeedWith extraMs =
                 let
                     days =
-                        if month < 3 || not (isLeapYear year) then
+                        if (month == Jan || month == Feb) || not (isLeapYear year) then
                             -- If we're in January or February, it doesn't matter
                             -- if we're in a leap year from a days-in-month perspective.
-                            -- Only possible impact of laep years in this scenario is
+                            -- Only possible impact of leap years in this scenario is
                             -- if we received February 29, which is checked later.
                             -- Also, this doesn't matter if we explicitly aren't
                             -- in a leap year.
@@ -129,7 +129,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                 Parser.succeed (extraMs + yearMs + dayMs)
         in
         case month of
-            1 ->
+            Jan ->
                 -- 31 days in January
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -138,7 +138,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- Add 0 days when in the first month of the year
                     succeedWith 0
 
-            2 ->
+            Feb ->
                 -- 28 days in February unless it's a leap year; then 29)
                 if (dayInMonth > 29) || (dayInMonth == 29 && not (isLeapYear year)) then
                     invalidDay dayInMonth
@@ -148,7 +148,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- (31 * 24 * 60 * 60 * 1000)
                     succeedWith 2678400000
 
-            3 ->
+            Mar ->
                 -- 31 days in March
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -158,7 +158,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 5097600000
 
-            4 ->
+            Apr ->
                 -- 30 days in April
                 if dayInMonth > 30 then
                     invalidDay dayInMonth
@@ -168,7 +168,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 7776000000
 
-            5 ->
+            May ->
                 -- 31 days in May
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -178,7 +178,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 10368000000
 
-            6 ->
+            Jun ->
                 -- 30 days in June
                 if dayInMonth > 30 then
                     invalidDay dayInMonth
@@ -188,7 +188,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 13046400000
 
-            7 ->
+            Jul ->
                 -- 31 days in July
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -198,7 +198,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 15638400000
 
-            8 ->
+            Aug ->
                 -- 31 days in August
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -208,7 +208,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((31 + 30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 18316800000
 
-            9 ->
+            Sep ->
                 -- 30 days in September
                 if dayInMonth > 30 then
                     invalidDay dayInMonth
@@ -218,7 +218,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((31 + 31 + 30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 20995200000
 
-            10 ->
+            Oct ->
                 -- 31 days in October
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -228,7 +228,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((30 + 31 + 31 + 30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 23587200000
 
-            11 ->
+            Nov ->
                 -- 30 days in November
                 if dayInMonth > 30 then
                     invalidDay dayInMonth
@@ -238,7 +238,7 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- ((31 + 30 + 31 + 31 + 30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 26265600000
 
-            12 ->
+            Dec ->
                 -- 31 days in December
                 if dayInMonth > 31 then
                     invalidDay dayInMonth
@@ -247,9 +247,6 @@ yearMonthDay ( year, month, dayInMonth ) =
                     -- 30 days in November
                     -- ((30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31 + 28 + 31) * 24 * 60 * 60 * 1000)
                     succeedWith 28857600000
-
-            _ ->
-                Parser.problem ("Invalid month: \"" ++ String.fromInt month ++ "\"")
 
 
 fromParts : Int -> Int -> Int -> Int -> Time.Posix
@@ -291,21 +288,21 @@ leapYearsBefore y1 =
 -}
 utc : Parser Time.Posix
 utc =
+    -- Www, dd Mmm yyyy
     monthYearDayInMs
-        -- Www, dd Mmm yyyy
         |> andThen
             (\datePart ->
                 oneOf
                     [ succeed (fromParts datePart)
-                        |= paddedInt 2
                         -- hh
-                        |. symbol ":"
                         |= paddedInt 2
+                        |. symbol ":"
                         -- mm
-                        |. symbol ":"
                         |= paddedInt 2
+                        |. symbol ":"
                         -- ss
-                        |. Parser.spaces
+                        |= paddedInt 2
+                        |. spaces
                         |. Parser.token "GMT"
                         |. end
                     , succeed (fromParts datePart 0 0 0)
@@ -324,38 +321,99 @@ succeed or problem when we encounter February 29.
 monthYearDayInMs : Parser Int
 monthYearDayInMs =
     -- Www, dd Mmm yyyy
-    Parser.succeed (\day month year -> ( year, month, day ))
-        |. Parser.chompWhile (\c -> c |> Char.isDigit |> not)
+    succeed (\day month year -> ( year, month, day ))
         -- Www,
-        |= paddedInt 2
+        |. (getAlphaChars |> Parser.andThen checkWeekday)
+        |. symbol ","
+        |. spaces
         -- dd
-        |. Parser.spaces
-        |= monthParser
+        |= paddedInt 2
+        |. spaces
         -- Mmm
-        |. Parser.spaces
-        |= paddedInt 4
+        |= (getAlphaChars |> Parser.andThen checkMonth)
+        |. spaces
         -- yyyy
-        |. Parser.spaces
+        |= paddedInt 4
+        |. spaces
         |> Parser.andThen yearMonthDay
 
 
-monthParser : Parser Int
-monthParser =
-    Parser.oneOf
-        [ Parser.map (always 1) (Parser.token "Jan")
-        , Parser.map (always 2) (Parser.token "Feb")
-        , Parser.map (always 3) (Parser.token "Mar")
-        , Parser.map (always 4) (Parser.token "Apr")
-        , Parser.map (always 5) (Parser.token "May")
-        , Parser.map (always 6) (Parser.token "Jun")
-        , Parser.map (always 7) (Parser.token "Jul")
-        , Parser.map (always 8) (Parser.token "Aug")
-        , Parser.map (always 9) (Parser.token "Sep")
-        , Parser.map (always 10) (Parser.token "Oct")
-        , Parser.map (always 11) (Parser.token "Nov")
-        , Parser.map (always 12) (Parser.token "Dec")
-        , Parser.problem "Invalid month"
-        ]
+getAlphaChars : Parser String
+getAlphaChars =
+    Char.isAlpha
+        |> Parser.chompWhile
+        |> Parser.getChompedString
+
+
+checkWeekday : String -> Parser Weekday
+checkWeekday weekday =
+    case weekday of
+        "Mon" ->
+            succeed Mon
+
+        "Tue" ->
+            succeed Tue
+
+        "Wed" ->
+            succeed Wed
+
+        "Thu" ->
+            succeed Thu
+
+        "Fri" ->
+            succeed Fri
+
+        "Sat" ->
+            succeed Sat
+
+        "Sun" ->
+            succeed Sun
+
+        _ ->
+            Parser.problem ("Invalid weekday: " ++ weekday)
+
+
+checkMonth : String -> Parser Month
+checkMonth month =
+    case month of
+        "Jan" ->
+            succeed Jan
+
+        "Feb" ->
+            succeed Feb
+
+        "Mar" ->
+            succeed Mar
+
+        "Apr" ->
+            succeed Apr
+
+        "May" ->
+            succeed May
+
+        "Jun" ->
+            succeed Jun
+
+        "Jul" ->
+            succeed Jul
+
+        "Aug" ->
+            succeed Aug
+
+        "Sep" ->
+            succeed Sep
+
+        "Oct" ->
+            succeed Oct
+
+        "Nov" ->
+            succeed Nov
+
+        "Dec" ->
+            succeed Dec
+
+        _ ->
+            Parser.problem ("Invalid month: " ++ month)
 
 
 {-| Inflate a Posix integer into a more memory-intensive UTC date string.

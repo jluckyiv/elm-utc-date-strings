@@ -30,6 +30,14 @@ knownValues =
             \_ ->
                 Utc.toTime "Sun, 12 Nov 2012 00:00:00 GMT"
                     |> Expect.equal (Ok (Time.millisToPosix 1352678400000))
+        , test "toTime fails with invalid weekday" <|
+            \_ ->
+                Utc.toTime "San, 11 Nov 2012 23:00:00 GMT"
+                    |> Expect.err
+        , test "toTime fails with invalid month" <|
+            \_ ->
+                Utc.toTime "Sat, 11 Nav 2012 23:00:00 GMT"
+                    |> Expect.err
         , test "Invalid timestamps don't parse" <|
             \_ ->
                 Utc.toTime "Sun, 01 Apr 2012 05:basketball"
