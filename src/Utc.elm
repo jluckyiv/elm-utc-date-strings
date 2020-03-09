@@ -1,6 +1,6 @@
-module Iso8601 exposing (fromTime, toTime, decoder, encode)
+module Utc exposing (fromTime, toTime, decoder, encode)
 
-{-| Convert between ISO-8601 date strings and POSIX times.
+{-| Convert between UTC date strings and POSIX times.
 
 @docs fromTime, toTime, decoder, encode
 
@@ -8,11 +8,11 @@ module Iso8601 exposing (fromTime, toTime, decoder, encode)
 
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
-import Parser exposing ((|.), (|=), Parser, andThen, end, int, map, oneOf, succeed, symbol)
-import Time exposing (Month(..), utc)
+import Parser exposing ((|.), (|=), Parser, andThen, end, oneOf, succeed, symbol)
+import Time exposing (Month(..), Weekday(..), utc)
 
 
-{-| Decode an ISO-8601 date string to a `Time.Posix` value using [`toTime`](#toTime).
+{-| Decode a UTC date string to a `Time.Posix` value using [`toTime`](#toTime).
 -}
 decoder : Decoder Time.Posix
 decoder =
@@ -28,7 +28,7 @@ decoder =
             )
 
 
-{-| Encode a `Time.Posix` value as an ISO-8601 date string using
+{-| Encode a `Time.Posix` value as a UTC date string using
 [`fromTime`](#fromTime).
 -}
 encode : Time.Posix -> Encode.Value
@@ -36,16 +36,14 @@ encode =
     fromTime >> Encode.string
 
 
-{-| Convert from an ISO-8601 date string to a `Time.Posix` value.
+{-| Convert from a UTC date string to a `Time.Posix` value.
 
-ISO-8601 date strings sometimes specify things in UTC. Other times, they specify
-a non-UTC time as well as a UTC offset. Regardless of which format the ISO-8601
-string uses, this function normalizes it and returns a time in UTC.
+UTC date strings are always GMT. This function returns a time in UTC/GMT.
 
 -}
 toTime : String -> Result (List Parser.DeadEnd) Time.Posix
 toTime str =
-    Parser.run iso8601 str
+    Parser.run utc str
 
 
 {-| A fixed-length integer padded with zeroes.
@@ -254,15 +252,13 @@ yearMonthDay ( year, month, dayInMonth ) =
                 Parser.problem ("Invalid month: \"" ++ String.fromInt month ++ "\"")
 
 
-fromParts : Int -> Int -> Int -> Int -> Int -> Int -> Time.Posix
-fromParts monthYearDayMs hour minute second ms utcOffsetMinutes =
+fromParts : Int -> Int -> Int -> Int -> Time.Posix
+fromParts monthYearDayMs hour minute second =
     Time.millisToPosix
         (monthYearDayMs
             + (hour * 60 * 60 * 1000)
-            -- Incoroprate and discard UTC offset
-            + ((minute - utcOffsetMinutes) * 60 * 1000)
+            + (minute * 60 * 1000)
             + (second * 1000)
-            + ms
         )
 
 
@@ -291,105 +287,30 @@ leapYearsBefore y1 =
     (y // 4) - (y // 100) + (y // 400)
 
 
-{-| YYYY-MM-DDTHH:mm:ss.sssZ or ±YYYYYY-MM-DDTHH:mm:ss.sssZ
+{-| Www, dd Mmm yyyy hh:mm:ss GMT
 -}
-iso8601 : Parser Time.Posix
-iso8601 =
-    -- TODO account for format variations, including those with UTC offsets
+utc : Parser Time.Posix
+utc =
     monthYearDayInMs
-        -- YYYY-MM-DD
+        -- Www, dd Mmm yyyy
         |> andThen
             (\datePart ->
                 oneOf
                     [ succeed (fromParts datePart)
-                        |. symbol "T"
                         |= paddedInt 2
-                        -- HH
-                        |= oneOf
-                            [ succeed identity
-                                |. symbol ":"
-                                |= paddedInt 2
-                            , paddedInt 2
-                            ]
-                        -- mm
-                        |= oneOf
-                            [ succeed identity
-                                |. symbol ":"
-                                |= paddedInt 2
-                            , paddedInt 2
-                            ]
-                        -- ss
-                        |= oneOf
-                            [ succeed identity
-                                |. symbol "."
-                                |= fractionsOfASecondInMs
-                            , succeed 0
-                            ]
-                        -- SSS
-                        |= utcOffsetInMinutes
-                        |. end
-                    , succeed (fromParts datePart 0 0 0 0 0)
-                        |. end
-                    ]
-            )
-
-
-utcOffsetInMinutes : Parser Int
-utcOffsetInMinutes =
-    let
-        utcOffsetMinutesFromParts : Int -> Int -> Int -> Int
-        utcOffsetMinutesFromParts multiplier hours minutes =
-            -- multiplier is either 1 or -1 (for negative UTC offsets)
-            multiplier * (hours * 60) + minutes
-    in
-    Parser.succeed identity
-        |= oneOf
-            [ -- "Z" means UTC
-              map (\_ -> 0) (symbol "Z")
-
-            -- +05:00 means UTC+5 whereas -11:30 means UTC-11.5
-            , succeed utcOffsetMinutesFromParts
-                |= oneOf
-                    [ map (\_ -> 1) (symbol "+")
-                    , map (\_ -> -1) (symbol "-")
-                    ]
-                -- support 01, 0100 and 01:00
-                |= paddedInt 2
-                |= oneOf
-                    [ succeed identity
+                        -- hh
                         |. symbol ":"
                         |= paddedInt 2
-                    , paddedInt 2
-                    , succeed 0
+                        -- mm
+                        |. symbol ":"
+                        |= paddedInt 2
+                        -- ss
+                        |. Parser.spaces
+                        |. Parser.token "GMT"
+                        |. end
+                    , succeed (fromParts datePart 0 0 0)
+                        |. end
                     ]
-
-            -- No "Z" is valid
-            , succeed 0
-                |. end
-            ]            
-
-
-{-| Parse fractions of a second, and convert to milliseconds
--}
-fractionsOfASecondInMs : Parser Int
-fractionsOfASecondInMs =
-    Parser.chompWhile Char.isDigit
-        |> Parser.getChompedString
-        |> Parser.andThen
-            (\str ->
-                if String.length str <= 9 then
-                    case String.toFloat ("0." ++ str) of
-                        Just floatVal ->
-                            Parser.succeed (round (floatVal * 1000))
-
-                        Nothing ->
-                            Parser.problem ("Invalid float: \"" ++ str ++ "\"")
-
-                else
-                    Parser.problem
-                        ("Expected at most 9 digits, but got "
-                            ++ String.fromInt (String.length str)
-                        )
             )
 
 
@@ -402,59 +323,99 @@ succeed or problem when we encounter February 29.
 -}
 monthYearDayInMs : Parser Int
 monthYearDayInMs =
-    Parser.succeed (\year month day -> ( year, month, day ))
+    -- Www, dd Mmm yyyy
+    Parser.succeed (\day month year -> ( year, month, day ))
+        |. Parser.chompWhile (\c -> c |> Char.isDigit |> not)
+        -- Www,
+        |= paddedInt 2
+        -- dd
+        |. Parser.spaces
+        |= monthParser
+        -- Mmm
+        |. Parser.spaces
         |= paddedInt 4
-        -- YYYY
-        |= oneOf
-            [ succeed identity
-                |. symbol "-"
-                |= paddedInt 2
-            , paddedInt 2
-            ]
-        -- MM
-        |= oneOf
-            [ succeed identity
-                |. symbol "-"
-                |= paddedInt 2
-            , paddedInt 2
-            ]
-        -- DD
+        -- yyyy
+        |. Parser.spaces
         |> Parser.andThen yearMonthDay
 
 
-{-| Inflate a Posix integer into a more memory-intensive ISO-8601 date string.
+monthParser : Parser Int
+monthParser =
+    Parser.oneOf
+        [ Parser.map (always 1) (Parser.token "Jan")
+        , Parser.map (always 2) (Parser.token "Feb")
+        , Parser.map (always 3) (Parser.token "Mar")
+        , Parser.map (always 4) (Parser.token "Apr")
+        , Parser.map (always 5) (Parser.token "May")
+        , Parser.map (always 6) (Parser.token "Jun")
+        , Parser.map (always 7) (Parser.token "Jul")
+        , Parser.map (always 8) (Parser.token "Aug")
+        , Parser.map (always 9) (Parser.token "Sep")
+        , Parser.map (always 10) (Parser.token "Oct")
+        , Parser.map (always 11) (Parser.token "Nov")
+        , Parser.map (always 12) (Parser.token "Dec")
+        , Parser.problem "Invalid month"
+        ]
+
+
+{-| Inflate a Posix integer into a more memory-intensive UTC date string.
 
 It's generally best to avoid doing this unless an external API requires it.
 
 (UTC integers are less error-prone, take up less memory, and are more efficient
 for time arithmetic.)
 
-Format: YYYY-MM-DDTHH:mm:ss.SSSZ
+Format: Www, dd Mmm yyyy hh:mm:ss GMT
 
 -}
 fromTime : Time.Posix -> String
 fromTime time =
-    ---- YYYY
-    toPaddedString 4 (Time.toYear utc time)
-        ++ "-"
-        -- MM
-        ++ toPaddedString 2 (fromMonth (Time.toMonth utc time))
-        ++ "-"
-        -- DD
-        ++ toPaddedString 2 (Time.toDay utc time)
-        ++ "T"
-        -- HH
-        ++ toPaddedString 2 (Time.toHour utc time)
+    ---- Www,
+    toWeekday time
+        ++ ", "
+        -- dd
+        ++ toPaddedString 2 (Time.toDay Time.utc time)
+        ++ " "
+        -- Mmm
+        ++ fromMonth (Time.toMonth Time.utc time)
+        ++ " "
+        -- yyyy
+        ++ toPaddedString 4 (Time.toYear Time.utc time)
+        ++ " "
+        -- hh
+        ++ toPaddedString 2 (Time.toHour Time.utc time)
         ++ ":"
         -- mm
-        ++ toPaddedString 2 (Time.toMinute utc time)
+        ++ toPaddedString 2 (Time.toMinute Time.utc time)
         ++ ":"
         -- ss
-        ++ toPaddedString 2 (Time.toSecond utc time)
-        ++ "."
-        -- SSS
-        ++ toPaddedString 3 (Time.toMillis utc time)
-        ++ "Z"
+        ++ toPaddedString 2 (Time.toSecond Time.utc time)
+        ++ " GMT"
+
+
+toWeekday : Time.Posix -> String
+toWeekday time =
+    case Time.toWeekday Time.utc time of
+        Sun ->
+            "Sun"
+
+        Mon ->
+            "Mon"
+
+        Tue ->
+            "Tue"
+
+        Wed ->
+            "Wed"
+
+        Thu ->
+            "Thu"
+
+        Fri ->
+            "Fri"
+
+        Sat ->
+            "Sat"
 
 
 toPaddedString : Int -> Int -> String
@@ -462,41 +423,41 @@ toPaddedString digits time =
     String.padLeft digits '0' (String.fromInt time)
 
 
-fromMonth : Time.Month -> Int
+fromMonth : Time.Month -> String
 fromMonth month =
     case month of
         Jan ->
-            1
+            "Jan"
 
         Feb ->
-            2
+            "Feb"
 
         Mar ->
-            3
+            "Mar"
 
         Apr ->
-            4
+            "Apr"
 
         May ->
-            5
+            "May"
 
         Jun ->
-            6
+            "Jun"
 
         Jul ->
-            7
+            "Jul"
 
         Aug ->
-            8
+            "Aug"
 
         Sep ->
-            9
+            "Sep"
 
         Oct ->
-            10
+            "Oct"
 
         Nov ->
-            11
+            "Nov"
 
         Dec ->
-            12
+            "Dec"
