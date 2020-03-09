@@ -2,7 +2,7 @@
 
 Convert [UTC date strings](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toUTCString#Description) into [POSIX times](https://package.elm-lang.org/packages/elm/time/latest/Time#Posix).
 
-This package is a port of [rtfeldman/elm-iso8601-date-strings](https://github.com/rtfeldman/elm-iso8601-date-strings). Most of the code is Richard's, as is most of the README below.
+This package is a fork of [rtfeldman/elm-iso8601-date-strings](https://github.com/rtfeldman/elm-iso8601-date-strings). Most of the code is Richard's, as is most of the README below.
 
 This package takes the view that it is a mistake to use UTC date strings as a
 data transfer format. Nevertheless, third-party endpoints may use them,
